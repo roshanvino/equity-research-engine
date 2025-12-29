@@ -58,26 +58,26 @@ def test_standardize_sec_basic() -> None:
 def test_capex_sign_handling() -> None:
     """Test that capex sign is handled correctly (negative for cash outflow)."""
     income_df = pd.DataFrame({
-        "period_end": pd.to_datetime(["2023-09-30"]),
-        "revenue": [394328000000],
-        "operating_income": [114301000000],
-        "net_income": [96995000000],
-        "currency": ["USD"],
+        "period_end": pd.to_datetime(["2023-09-30", "2022-09-30"]),
+        "revenue": [394328000000, 365817000000],
+        "operating_income": [114301000000, 108949000000],
+        "net_income": [96995000000, 99803000000],
+        "currency": ["USD", "USD"],
     })
 
     balance_df = pd.DataFrame({
-        "period_end": pd.to_datetime(["2023-09-30"]),
-        "cash_and_equivalents": [29965000000],
-        "total_debt": [106209000000],
-        "currency": ["USD"],
+        "period_end": pd.to_datetime(["2023-09-30", "2022-09-30"]),
+        "cash_and_equivalents": [29965000000, 23646000000],
+        "total_debt": [106209000000, 110087000000],
+        "currency": ["USD", "USD"],
     })
 
     # Test with positive capex (should be converted to negative)
     cash_df = pd.DataFrame({
-        "period_end": pd.to_datetime(["2023-09-30"]),
-        "operating_cash_flow": [110543000000],
-        "capital_expenditure": [10949500000],  # Positive value
-        "currency": ["USD"],
+        "period_end": pd.to_datetime(["2023-09-30", "2022-09-30"]),
+        "operating_cash_flow": [110543000000, 122151000000],
+        "capital_expenditure": [10949500000, 11085000000],  # Positive values
+        "currency": ["USD", "USD"],
     })
 
     standardized = standardize_sec(income_df, balance_df, cash_df, "AAPL", source="sec")
@@ -93,26 +93,26 @@ def test_capex_sign_handling() -> None:
 
 def test_missing_required_fields() -> None:
     """Test that missing required fields raise appropriate errors."""
-    # Missing revenue
+    # Missing revenue (but have 2 periods to pass period validation)
     income_df = pd.DataFrame({
-        "period_end": pd.to_datetime(["2023-09-30"]),
-        "operating_income": [114301000000],
-        "net_income": [96995000000],
-        "currency": ["USD"],
+        "period_end": pd.to_datetime(["2023-09-30", "2022-09-30"]),
+        "operating_income": [114301000000, 108949000000],
+        "net_income": [96995000000, 99803000000],
+        "currency": ["USD", "USD"],
     })
 
     balance_df = pd.DataFrame({
-        "period_end": pd.to_datetime(["2023-09-30"]),
-        "cash_and_equivalents": [29965000000],
-        "total_debt": [106209000000],
-        "currency": ["USD"],
+        "period_end": pd.to_datetime(["2023-09-30", "2022-09-30"]),
+        "cash_and_equivalents": [29965000000, 23646000000],
+        "total_debt": [106209000000, 110087000000],
+        "currency": ["USD", "USD"],
     })
 
     cash_df = pd.DataFrame({
-        "period_end": pd.to_datetime(["2023-09-30"]),
-        "operating_cash_flow": [110543000000],
-        "capital_expenditure": [-10949500000],
-        "currency": ["USD"],
+        "period_end": pd.to_datetime(["2023-09-30", "2022-09-30"]),
+        "operating_cash_flow": [110543000000, 122151000000],
+        "capital_expenditure": [-10949500000, -11085000000],
+        "currency": ["USD", "USD"],
     })
 
     with pytest.raises(ValueError, match="Missing required fields"):

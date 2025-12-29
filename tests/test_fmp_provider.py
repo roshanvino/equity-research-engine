@@ -68,9 +68,10 @@ def test_legacy_endpoint_error_detection() -> None:
     with pytest.raises(LegacyEndpointError) as exc_info:
         provider._fetch_endpoint("/income-statement/AAPL")
 
-    assert "Legacy endpoint" in str(exc_info.value).lower()
-    assert "stable endpoints" in str(exc_info.value).lower()
-    assert "v4" in str(exc_info.value)
+    error_msg = str(exc_info.value).lower()
+    assert "legacy endpoint" in error_msg
+    assert "stable endpoints" in error_msg
+    assert "v4" in error_msg
 
     provider.client.close()
 
@@ -93,7 +94,8 @@ def test_legacy_endpoint_error_in_response_body() -> None:
     with pytest.raises(LegacyEndpointError) as exc_info:
         provider._fetch_endpoint("/income-statement/AAPL")
 
-    assert "Legacy endpoint" in str(exc_info.value).lower()
+    error_msg = str(exc_info.value).lower()
+    assert "legacy endpoint" in error_msg
 
     provider.client.close()
 
