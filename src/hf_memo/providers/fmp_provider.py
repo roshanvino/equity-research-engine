@@ -10,10 +10,20 @@ import pandas as pd
 from hf_memo.providers.base import FinancialsProvider
 
 
-class FMPProvider(FinancialsProvider):
-    """Provider for fetching financial data from Financial Modeling Prep API."""
+class LegacyEndpointError(RuntimeError):
+    """Raised when attempting to use a legacy FMP endpoint that is restricted."""
 
-    BASE_URL = "https://financialmodelingprep.com/api/v3"
+    pass
+
+
+class FMPProvider(FinancialsProvider):
+    """Provider for fetching financial data from Financial Modeling Prep API.
+
+    Uses FMP's stable API endpoints (v4) for financial statements.
+    Legacy v3 endpoints are deprecated and restricted to legacy users.
+    """
+
+    BASE_URL = "https://financialmodelingprep.com/api/v4"
 
     def __init__(self, api_key: str | None = None) -> None:
         """Initialize FMP provider.
@@ -33,6 +43,17 @@ class FMPProvider(FinancialsProvider):
             )
         self.client = httpx.Client(timeout=30.0)
 
+    def _build_url(self, endpoint: str) -> str:
+        """Build the full URL for an FMP API endpoint.
+
+        Args:
+            endpoint: API endpoint path (e.g., '/income-statement/AAPL').
+
+        Returns:
+            Full URL string.
+        """
+        return f"{self.BASE_URL}{endpoint}"
+
     def _fetch_endpoint(self, endpoint: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Fetch data from FMP API endpoint.
 
@@ -46,8 +67,9 @@ class FMPProvider(FinancialsProvider):
         Raises:
             RuntimeError: If API call fails or returns error.
             ValueError: If response is invalid.
+            LegacyEndpointError: If hitting a legacy endpoint (403 with legacy message).
         """
-        url = f"{self.BASE_URL}{endpoint}"
+        url = self._build_url(endpoint)
         query_params = {"apikey": self.api_key, "period": "annual", "limit": 5}
         if params:
             query_params.update(params)
@@ -57,17 +79,48 @@ class FMPProvider(FinancialsProvider):
             response.raise_for_status()
             data = response.json()
 
-            if isinstance(data, dict) and "Error Message" in data:
-                raise RuntimeError(f"FMP API error: {data['Error Message']}")
+            # Check for legacy endpoint error in response
+            if isinstance(data, dict):
+                error_msg = data.get("Error Message", "") or data.get("message", "")
+                if "Legacy Endpoint" in error_msg or "legacy" in error_msg.lower():
+                    raise LegacyEndpointError(
+                        f"FMP API returned legacy endpoint error: {error_msg}\n"
+                        f"This endpoint is restricted to legacy users. "
+                        f"Please verify you are using stable endpoints (v4) and that your API plan supports them. "
+                        f"Endpoint attempted: {url}"
+                    )
+                if "Error Message" in data:
+                    raise RuntimeError(f"FMP API error: {data['Error Message']}")
 
             if not isinstance(data, list):
                 raise ValueError(f"Unexpected response format from FMP API: {type(data)}")
 
             return data
         except httpx.HTTPStatusError as e:
-            raise RuntimeError(f"FMP API HTTP error: {e.response.status_code} - {e.response.text}")
+            # Check for 403 with legacy endpoint message
+            if e.response.status_code == 403:
+                try:
+                    error_data = e.response.json()
+                    error_msg = str(error_data.get("Error Message", "")) + str(error_data.get("message", ""))
+                    if "Legacy Endpoint" in error_msg or "legacy" in error_msg.lower():
+                        raise LegacyEndpointError(
+                            f"FMP API 403: Legacy endpoint restricted.\n"
+                            f"Error: {error_msg}\n"
+                            f"This endpoint is only available for legacy users prior to August 31, 2025. "
+                            f"Please update to use stable endpoints (v4). "
+                            f"Endpoint attempted: {url}"
+                        ) from e
+                except (ValueError, KeyError):
+                    pass  # If we can't parse the error, fall through to generic error
+                raise RuntimeError(
+                    f"FMP API HTTP 403 Forbidden. "
+                    f"This may indicate you are using a legacy endpoint. "
+                    f"Please verify you are using stable endpoints (v4). "
+                    f"Response: {e.response.text}"
+                ) from e
+            raise RuntimeError(f"FMP API HTTP error: {e.response.status_code} - {e.response.text}") from e
         except httpx.RequestError as e:
-            raise RuntimeError(f"FMP API request failed: {str(e)}")
+            raise RuntimeError(f"FMP API request failed: {str(e)}") from e
 
     def _normalize_dataframe(self, data: list[dict[str, Any]], ticker: str) -> pd.DataFrame:
         """Convert FMP JSON response to normalized DataFrame.
@@ -124,6 +177,8 @@ class FMPProvider(FinancialsProvider):
     def get_income_statement(self, ticker: str) -> pd.DataFrame:
         """Fetch income statement data for a ticker.
 
+        Uses stable endpoint: /api/v4/income-statement/{ticker}
+
         Args:
             ticker: Stock ticker symbol.
 
@@ -133,6 +188,7 @@ class FMPProvider(FinancialsProvider):
         Raises:
             ValueError: If ticker is invalid or data unavailable.
             RuntimeError: If API call fails.
+            LegacyEndpointError: If hitting a legacy endpoint.
         """
         endpoint = f"/income-statement/{ticker.upper()}"
         data = self._fetch_endpoint(endpoint)
@@ -144,6 +200,8 @@ class FMPProvider(FinancialsProvider):
     def get_balance_sheet(self, ticker: str) -> pd.DataFrame:
         """Fetch balance sheet data for a ticker.
 
+        Uses stable endpoint: /api/v4/balance-sheet-statement/{ticker}
+
         Args:
             ticker: Stock ticker symbol.
 
@@ -153,6 +211,7 @@ class FMPProvider(FinancialsProvider):
         Raises:
             ValueError: If ticker is invalid or data unavailable.
             RuntimeError: If API call fails.
+            LegacyEndpointError: If hitting a legacy endpoint.
         """
         endpoint = f"/balance-sheet-statement/{ticker.upper()}"
         data = self._fetch_endpoint(endpoint)
@@ -164,6 +223,8 @@ class FMPProvider(FinancialsProvider):
     def get_cash_flow(self, ticker: str) -> pd.DataFrame:
         """Fetch cash flow statement data for a ticker.
 
+        Uses stable endpoint: /api/v4/cash-flow-statement/{ticker}
+
         Args:
             ticker: Stock ticker symbol.
 
@@ -173,6 +234,7 @@ class FMPProvider(FinancialsProvider):
         Raises:
             ValueError: If ticker is invalid or data unavailable.
             RuntimeError: If API call fails.
+            LegacyEndpointError: If hitting a legacy endpoint.
         """
         endpoint = f"/cash-flow-statement/{ticker.upper()}"
         data = self._fetch_endpoint(endpoint)

@@ -41,6 +41,7 @@ reports/
 *.log
 .env
 .env.local
+.cache/
 
 # OS
 .DS_Store

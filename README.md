@@ -24,7 +24,7 @@ The goal is to demonstrate **driver-based analysis**, **probabilistic thinking**
 ### Prerequisites
 - Python 3.11+
 - Poetry (install via `curl -sSL https://install.python-poetry.org | python3 -`)
-- Financial Modeling Prep (FMP) API key ([Get one here](https://site.financialmodelingprep.com/developer/docs/))
+- **No API key required** - uses free SEC EDGAR public APIs by default
 
 ### Setup
 
@@ -35,12 +35,13 @@ cd equity-research-engine
 
 # Install dependencies
 poetry install
+```
 
-# Set FMP API key as environment variable
+That's it! The default provider (SEC) requires no API key and works immediately.
+
+**Optional**: If you want to use FMP provider instead (requires paid API plan):
+```bash
 export FMP_API_KEY='your-api-key-here'
-
-# Or add to your shell profile (~/.zshrc or ~/.bashrc)
-echo 'export FMP_API_KEY="your-api-key-here"' >> ~/.zshrc
 ```
 
 ## Usage
@@ -61,6 +62,9 @@ hf-memo run AAPL
 ```bash
 # Use a custom config file
 poetry run hf-memo run AAPL --config config/config.yaml
+
+# Use FMP provider instead of SEC (requires FMP_API_KEY)
+poetry run hf-memo run AAPL --provider fmp
 ```
 
 ### Output
@@ -128,7 +132,7 @@ poetry run mypy src/
 ## Architecture
 
 The pipeline follows this workflow:
-1. **Fetch** → FMP API provider fetches annual financial statements
+1. **Fetch** → Data provider fetches annual financial statements (SEC by default, FMP optional)
 2. **Standardize** → Convert to canonical long-format schema
 3. **Extract Drivers** → Calculate historical revenue growth, margins, capex ratios
 4. **Forecast** → Build 5-year driver-based forecast for Base/Bull/Bear scenarios
@@ -138,16 +142,28 @@ The pipeline follows this workflow:
 ### Provider Abstraction
 
 The project uses a provider adapter pattern. Currently implemented:
-- **FMP Provider** (`hf_memo/providers/fmp_provider.py`) - Financial Modeling Prep API
+- **SEC Provider** (`hf_memo/providers/sec_provider.py`) - **Default** - SEC EDGAR public APIs (free, no API key required)
+- **FMP Provider** (`hf_memo/providers/fmp_provider.py`) - Financial Modeling Prep API (optional, requires paid API plan)
+
+**Default Provider: SEC**
+- Uses SEC EDGAR Company Facts API to extract XBRL financial data
+- No API key required - completely free and public
+- Respects SEC rate limits (10 requests/second) with built-in throttling
+- Caches ticker-to-CIK mapping locally for performance
+
+**FMP Provider (Optional)**
+- Requires FMP_API_KEY environment variable
+- Note: FMP's stable statement endpoints require a paid plan
+- Use `--provider fmp` to switch from default SEC provider
 
 Additional providers can be added by implementing the `FinancialsProvider` interface.
 
 ## Status
 ✅ MVP Complete - End-to-end pipeline functional  
-Uses Financial Modeling Prep (FMP) API for data fetching. Supports Base/Bull/Bear scenario analysis with configurable assumptions.
+Uses **SEC EDGAR public APIs by default** (free, no API key required). Supports Base/Bull/Bear scenario analysis with configurable assumptions.
 
 ## Intended Extensions
-- Additional data providers (e.g. OpenBB as optional, SEC filings)
+- Additional data providers (e.g. OpenBB as optional)
 - Batch analysis across a universe of stocks
 - Sensitivity analysis and assumption stress testing
 - Optional news and catalyst tagging

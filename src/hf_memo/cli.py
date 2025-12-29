@@ -9,8 +9,10 @@ import click
 from hf_memo.config import ForecastConfig, load_config
 from hf_memo.model.drivers import extract_drivers
 from hf_memo.providers.fmp_provider import FMPProvider
+from hf_memo.providers.sec_provider import SECProvider
 from hf_memo.report.memo import generate_memo
 from hf_memo.standardize.mapper_fmp import standardize_fmp
+from hf_memo.standardize.mapper_sec import standardize_sec
 from hf_memo.valuation.scenarios import run_scenarios
 
 
@@ -32,9 +34,9 @@ def main() -> None:
 @click.option(
     "--provider",
     "-p",
-    type=click.Choice(["fmp"], case_sensitive=False),
-    default="fmp",
-    help="Data provider to use (default: fmp)",
+    type=click.Choice(["sec", "fmp"], case_sensitive=False),
+    default="sec",
+    help="Data provider to use: 'sec' (default, free, no API key) or 'fmp' (requires paid API key)",
 )
 def run(ticker: str, config: Optional[Path], provider: str) -> None:
     """Generate investment memo for a ticker.
@@ -52,34 +54,48 @@ def run(ticker: str, config: Optional[Path], provider: str) -> None:
         raise click.Abort()
 
     # Initialize provider
-    if provider.lower() == "fmp":
-        try:
-            fmp_provider = FMPProvider()
+    provider_instance = None
+    provider_name = provider.lower()
+
+    try:
+        if provider_name == "sec":
+            provider_instance = SECProvider()
+            click.echo("✓ Initialized SEC provider (public API, no key required)")
+        elif provider_name == "fmp":
+            provider_instance = FMPProvider()
             click.echo("✓ Initialized FMP provider")
-        except ValueError as e:
-            click.echo(f"✗ {e}", err=True)
+        else:
+            click.echo(f"✗ Unsupported provider: {provider}", err=True)
             raise click.Abort()
-    else:
-        click.echo(f"✗ Unsupported provider: {provider}", err=True)
+    except ValueError as e:
+        click.echo(f"✗ {e}", err=True)
         raise click.Abort()
 
     # Fetch financial statements
     try:
         click.echo(f"Fetching financial statements for {ticker}...")
-        income_df = fmp_provider.get_income_statement(ticker)
-        balance_df = fmp_provider.get_balance_sheet(ticker)
-        cash_df = fmp_provider.get_cash_flow(ticker)
-        click.echo(f"✓ Fetched {len(income_df)} income statements, {len(balance_df)} balance sheets, {len(cash_df)} cash flow statements")
+        income_df = provider_instance.get_income_statement(ticker)
+        balance_df = provider_instance.get_balance_sheet(ticker)
+        cash_df = provider_instance.get_cash_flow(ticker)
+        click.echo(
+            f"✓ Fetched {len(income_df)} income statements, {len(balance_df)} balance sheets, {len(cash_df)} cash flow statements"
+        )
     except Exception as e:
         click.echo(f"✗ Error fetching data: {e}", err=True)
         raise click.Abort()
     finally:
-        fmp_provider.client.close()
+        if provider_instance:
+            provider_instance.client.close()
 
     # Standardize to canonical schema
     try:
         click.echo("Standardizing financial data...")
-        standardized_df = standardize_fmp(income_df, balance_df, cash_df, ticker, source="fmp")
+        if provider_name == "sec":
+            standardized_df = standardize_sec(income_df, balance_df, cash_df, ticker, source="sec")
+        elif provider_name == "fmp":
+            standardized_df = standardize_fmp(income_df, balance_df, cash_df, ticker, source="fmp")
+        else:
+            raise ValueError(f"Unknown provider: {provider_name}")
         click.echo(f"✓ Standardized {len(standardized_df)} data points")
     except Exception as e:
         click.echo(f"✗ Error standardizing data: {e}", err=True)
